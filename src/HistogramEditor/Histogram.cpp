@@ -4,6 +4,8 @@
 
 //----------------------------------------------------------------------------//
 Histogram::Histogram(const cv::Mat img)
+: src_size(img.size()),
+  src_type(img.type())
 {
     CV_Assert(img.channels() == 1);
 
@@ -11,14 +13,11 @@ Histogram::Histogram(const cv::Mat img)
     {
         case CV_8U:
         case CV_8S:
-            hist = std::vector<int>(256, 0);
+            hist = hist_data(256);
             break;
         case CV_16U:
         case CV_16S:
-        // case CV_32S:
-        // case CV_32F:
-        // case CV_64F:
-            hist = std::vector<int>(65536, 0);
+            hist = hist_data(65536);
             break;
         default:
             throw std::logic_error("Error : unable to generate histogram for this cv::Mat type (size > 16bits or floating points)");
@@ -27,26 +26,17 @@ Histogram::Histogram(const cv::Mat img)
     switch (img.type())
     {
         case CV_8U:
-            histgen<uint8_t>(img);
+            generate<uint8_t>(img);
             break;
         case CV_8S:
-            histgen<int8_t>(img);
+            generate<int8_t>(img);
             break;
         case CV_16U:
-            histgen<uint16_t>(img);
+            generate<uint16_t>(img);
             break;
         case CV_16S:
-            histgen<int16_t>(img);
+            generate<int16_t>(img);
             break;
-        // case CV_32S:
-        //     histgen<int32_t>(img);
-        //     break;
-        // case CV_32F:
-        //     histgen<float>(img);
-        //     break;
-        // case CV_64F:
-        //     histgen<double>(img);
-            // break;
     }
 }
 //----------------------------------------------------------------------------//
@@ -60,65 +50,114 @@ Histogram* Histogram::clone()
     return new Histogram(*this);
 }
 //----------------------------------------------------------------------------//
-template <typename T> void Histogram::histgen(const cv::Mat img)
+cv::Mat Histogram::image()
+{
+    cv::Mat img = cv::Mat::zeros(src_size, src_type);
+    for(auto gray_it = hist.begin(); gray_it != hist.end(); ++gray_it)
+    {
+        for(auto pix_it = gray_it->begin(); pix_it != gray_it->end(); ++pix_it)
+        {
+            switch (src_type)
+            {
+                case CV_8U:
+                    img.at<uint8_t>(pix_it->x, pix_it->y) = gray_it - hist.begin();
+                    break;
+                case CV_8S:
+                    img.at<int8_t>(pix_it->x, pix_it->y) = gray_it - hist.begin();
+                    break;
+                case CV_16U:
+                    img.at<uint16_t>(pix_it->x, pix_it->y) = gray_it - hist.begin();
+                    break;
+                case CV_16S:
+                    img.at<int16_t>(pix_it->x, pix_it->y) = gray_it - hist.begin();
+                    break;
+            }
+        }
+    }
+    return img;
+}
+//----------------------------------------------------------------------------//
+template <typename T> void Histogram::generate(const cv::Mat img)
 {
     for(int i = 0; i < img.rows; i++)
     {
         for(int j = 0; j < img.cols; j++)
         {
             T pixval = img.at<T>(i,j);
-            hist[pixval]++;
+            hist[pixval].push_back(cv::Point(i,j));
         }
     }
 }
 //----------------------------------------------------------------------------//
+bool size_comp(std::vector<cv::Point> a, std::vector<cv::Point> b)
+{
+    return a.size() < b.size();
+}
+//----------------------------------------------------------------------------//
+//Return largest value in the histogram
 int Histogram::max()
 {
-    return *std::max_element(std::begin(hist), std::end(hist));
+    return std::max_element(std::begin(hist), std::end(hist), size_comp)->size();
 }
 //----------------------------------------------------------------------------//
+//Return smallest value in the histogram
 int Histogram::min()
 {
-    return *std::min_element(std::begin(hist), std::end(hist));
+    return std::min_element(std::begin(hist), std::end(hist), size_comp)->size();
 }
 //----------------------------------------------------------------------------//
-int Histogram::right()
-{
-    int i = hist.size() - 1;
-    while(i >= 0 && hist[i] == 0)
-        i--;
-
-    return i;
-}
-//----------------------------------------------------------------------------//
+//Return index of first non zero value of the histogram
+//Return histogram size if all values are 0
 int Histogram::left()
 {
     int i = 0;
-    while(i < hist.size() && hist[i] == 0)
+    while(i < size() && hist[i].size() == 0)
         i++;
 
     return i;
 }
 //----------------------------------------------------------------------------//
-int Histogram::width()
+//Return index of last non zero value of the histogram
+//Return -1 if all values are 0
+int Histogram::right()
+{
+    int i = size() - 1;
+    while(i >= 0 && hist[i].size() == 0)
+        i--;
+
+    return i;
+}
+//----------------------------------------------------------------------------//
+//Return size of the histogram data array
+int Histogram::size()
 {
     return hist.size();
 }
 //----------------------------------------------------------------------------//
-void Histogram::stretch(size_t width)
+//Return length of the histogram from first to last non zero values
+int Histogram::range()
 {
-    if(width == 0)
-        throw std::logic_error("Error : cannot strech histogram to 0");
+    int r = right() - left() + 1;
+    if(r < 0)
+        return 0;
+    else
+        return r;
+}
+//----------------------------------------------------------------------------//
+void Histogram::stretch(int left, int right)
+{
+    right++;
+    if(right - left <= 0)
+        throw std::logic_error("Error : cannot stretch histogram to null width.");
 
-    if(width == hist.size())
-        return;
+    hist_data stretched_hist(size());
+    float a = (float)(right-left) / size();
+    float b = left;
 
-    std::vector<int> stretched_hist(width, 0);
-    float ratio = (float)width / hist.size();
-
-    for (int i=0;i<hist.size();i++)
+    for (int i=0;i<size();i++)
     {
-        stretched_hist[int(i*ratio)] += hist[i];
+        std::vector<cv::Point> &v = stretched_hist[int(i*a + b)];
+        v.insert(v.end(), hist[i].begin(), hist[i].end());
     }
 
     hist = stretched_hist;
@@ -126,45 +165,59 @@ void Histogram::stretch(size_t width)
 //----------------------------------------------------------------------------//
 void Histogram::info()
 {
-    std::cout << "min   :" << min() << std::endl;
-    std::cout << "max   :" << max() << std::endl;
-    std::cout << "left  :" << left() << std::endl;
+    std::cout << "min   :" << min()   << std::endl;
+    std::cout << "max   :" << max()   << std::endl;
+    std::cout << "left  :" << left()  << std::endl;
     std::cout << "right :" << right() << std::endl;
-    std::cout << "width :" << width() << std::endl;
+    std::cout << "size  :" << size()  << std::endl;
+    std::cout << "range :" << range() << std::endl;
 }
 //----------------------------------------------------------------------------//
 void Histogram::crop(int left, int right)
 {
-    hist = std::vector<int>(hist.begin() + left, hist.begin() + right);
+    if(left >= right)
+        throw std::logic_error("Error : cannot crop histogram, left >= right.");
+
+    for(auto it = hist.begin(); it < hist.begin() + left; ++it)
+    {
+        it->clear();
+    }
+
+    for(auto it = hist.begin() + right + 1; it < hist.end(); ++it)
+    {
+        it->clear();
+    }
 }
 //----------------------------------------------------------------------------//
-cv::Mat Histogram::draw(const cv::Size size)
+cv::Mat Histogram::draw(const cv::Size img_size)
 {
-    cv::Mat img = cv::Mat::zeros(size, CV_8UC3);
+    cv::Mat img = cv::Mat::zeros(img_size, CV_8UC3);
 
     Histogram* stretched;
-    if(size.width != hist.size())
-    {
-        stretched = this->clone();
-        stretched->stretch(size.width);
-    }
-    else
+    // if(img_size.width != this->size())
+    // {
+    //     stretched = this->clone();
+    //     stretched->stretch(0, img_size.width);
+    // }
+    // else
     {
         stretched = this;
     }
 
     int maxval = stretched->max();
+    if(maxval == 0)
+        return img;
     for(int i = 0; i < img.cols; i++)
     {
-        cv::Point pt1(i, size.height);
-        cv::Point pt2(i, size.height - stretched->hist[i] * size.height / maxval);
+        cv::Point pt1(i, img_size.height);
+        cv::Point pt2(i, img_size.height - stretched->hist[i].size() * img_size.height / maxval);
         cv::rectangle(img, pt1, pt2, cv::Scalar(255, 255, 255), CV_FILLED);
     }
 
     int right = stretched->right() + 1;
-    int left = stretched->left() - 1;
-    cv::line(img, cv::Point(left, 0), cv::Point(left, size.height), cv::Scalar(0, 0, 255));
-    cv::line(img, cv::Point(right, 0), cv::Point(right, size.height), cv::Scalar(0, 0, 255));
+    int left  = stretched->left()  - 1;
+    cv::line(img, cv::Point(left, 0), cv::Point(left, img_size.height), cv::Scalar(0, 0, 255));
+    cv::line(img, cv::Point(right, 0), cv::Point(right, img_size.height), cv::Scalar(0, 0, 255));
 
     return  img;
 }

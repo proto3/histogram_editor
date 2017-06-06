@@ -9,20 +9,26 @@ public:
     Histogram(cv::Mat img);
     Histogram(const Histogram &h);
     Histogram* clone();
+    cv::Mat image();
     int min();
     int max();
     int right();
     int left();
-    int width();
+    int size();
+    int range();
     void crop(int left, int right);
-    void stretch(size_t width);
+    void stretch(int left, int right);
     cv::Mat draw(const cv::Size size);
     void info();
 
 private:
-    std::vector<int> hist;
+    typedef std::vector<std::vector<cv::Point>> hist_data;
+    hist_data hist;
 
-    template <typename T> void histgen(cv::Mat img);
+    cv::Size src_size;
+    uint8_t  src_type;
+
+    template <typename T> void generate(cv::Mat img);
 };
 
 #endif
