@@ -20,6 +20,7 @@ public:
     void stretch(int left, int right);
     cv::Mat draw(const cv::Size size);
     void info();
+    int HistogramMap(Histogram &h);
 
 private:
     typedef std::vector<std::vector<cv::Point>> hist_data;

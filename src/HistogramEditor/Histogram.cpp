@@ -1,7 +1,41 @@
 #include <HistogramEditor/Histogram.h>
 #include <opencv2/imgproc.hpp>
+#include <chrono>
 #include <iostream>
 
+using namespace std::chrono;
+
+//----------------------------------------------------------------------------//
+int Histogram::HistogramMap(Histogram &h)
+{
+    if(hist.size() != h.hist.size())
+        throw std::logic_error("Error : unable to map histograms of different data size.");
+
+    cv::Mat img = h.image();
+
+    int i = 0;
+    for(auto it = hist.begin(); it < hist.end(); ++it)
+    {
+        uint64_t sum = 0;
+        for(auto it_pix = it->begin(); it_pix < it->end(); ++it_pix)
+        {
+            sum += img.at<uint16_t>(it_pix->x, it_pix->y);
+        }
+        if(it->size() != 0)
+            sum /= it->size();
+
+        if(i < 1000)
+            std::cout << i << " " << sum << std::endl;
+        i++;
+    }
+}
+//----------------------------------------------------------------------------//
+uint32_t ms_elapsed(steady_clock::time_point timestamp)
+{
+    steady_clock::time_point now = steady_clock::now();
+    milliseconds elapsed_time = duration_cast<milliseconds>(now - timestamp);
+    return elapsed_time.count();
+}
 //----------------------------------------------------------------------------//
 Histogram::Histogram(const cv::Mat img)
 : src_size(img.size()),
@@ -74,11 +108,14 @@ cv::Mat Histogram::image()
             }
         }
     }
+
     return img;
 }
 //----------------------------------------------------------------------------//
 template <typename T> void Histogram::generate(const cv::Mat img)
 {
+    std::chrono::steady_clock::time_point start = steady_clock::now();
+
     for(int i = 0; i < img.rows; i++)
     {
         for(int j = 0; j < img.cols; j++)
@@ -87,6 +124,9 @@ template <typename T> void Histogram::generate(const cv::Mat img)
             hist[pixval].push_back(cv::Point(i,j));
         }
     }
+
+    uint32_t elapsed_time = ms_elapsed(start);
+    std::cout << "generate : " << elapsed_time << "ms" << std::endl;
 }
 //----------------------------------------------------------------------------//
 bool size_comp(std::vector<cv::Point> a, std::vector<cv::Point> b)
@@ -94,16 +134,26 @@ bool size_comp(std::vector<cv::Point> a, std::vector<cv::Point> b)
     return a.size() < b.size();
 }
 //----------------------------------------------------------------------------//
-//Return largest value in the histogram
-int Histogram::max()
-{
-    return std::max_element(std::begin(hist), std::end(hist), size_comp)->size();
-}
-//----------------------------------------------------------------------------//
 //Return smallest value in the histogram
 int Histogram::min()
 {
-    return std::min_element(std::begin(hist), std::end(hist), size_comp)->size();
+    int min = 0;
+    for(auto it = hist.begin(); it < hist.end(); ++it)
+    {
+        min = std::min((int)it->size(), min);
+    }
+    return min;
+}
+//----------------------------------------------------------------------------//
+//Return largest value in the histogram
+int Histogram::max()
+{
+    int max = 0;
+    for(auto it = hist.begin(); it < hist.end(); ++it)
+    {
+        max = std::max((int)it->size(), max);
+    }
+    return max;
 }
 //----------------------------------------------------------------------------//
 //Return index of first non zero value of the histogram
@@ -194,12 +244,12 @@ cv::Mat Histogram::draw(const cv::Size img_size)
     cv::Mat img = cv::Mat::zeros(img_size, CV_8UC3);
 
     Histogram* stretched;
-    // if(img_size.width != this->size())
-    // {
-    //     stretched = this->clone();
-    //     stretched->stretch(0, img_size.width);
-    // }
-    // else
+    if(img_size.width != this->size())
+    {
+        stretched = this->clone();
+        stretched->stretch(0, img_size.width);
+    }
+    else
     {
         stretched = this;
     }
