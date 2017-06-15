@@ -18,9 +18,11 @@ public:
     int range();
     void crop(int left, int right);
     void stretch(int left, int right);
+    void stretchMax();
     cv::Mat draw(const cv::Size size);
     void info();
-    int HistogramMap(Histogram &h);
+    int HistogramMap(Histogram &h, std::vector<uint16_t> &map);
+    int applyMap(std::vector<uint16_t> &map);
 
 private:
     typedef std::vector<std::vector<cv::Point>> hist_data;

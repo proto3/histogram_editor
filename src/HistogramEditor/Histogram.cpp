@@ -6,28 +6,74 @@
 using namespace std::chrono;
 
 //----------------------------------------------------------------------------//
-int Histogram::HistogramMap(Histogram &h)
+//TODO not uint8_t compatible yet
+int Histogram::HistogramMap(Histogram &h, std::vector<uint16_t> &map)
 {
     if(hist.size() != h.hist.size())
         throw std::logic_error("Error : unable to map histograms of different data size.");
 
     cv::Mat img = h.image();
 
-    int i = 0;
-    for(auto it = hist.begin(); it < hist.end(); ++it)
+    for(auto gray_it = hist.begin(); gray_it < hist.end(); ++gray_it)
     {
-        uint64_t sum = 0;
-        for(auto it_pix = it->begin(); it_pix < it->end(); ++it_pix)
-        {
-            sum += img.at<uint16_t>(it_pix->x, it_pix->y);
-        }
-        if(it->size() != 0)
-            sum /= it->size();
+        // uint64_t mean = 0;
+        // for(auto pix_it = gray_it->begin(); pix_it < gray_it->end(); ++pix_it)
+        // {
+        //     mean += img.at<uint16_t>(pix_it->x, pix_it->y);
+        // }
+        // if(gray_it->size() > 0)
+        //     mean /= gray_it->size();
+        //
+        // map.push_back(mean);
 
-        if(i < 1000)
-            std::cout << i << " " << sum << std::endl;
-        i++;
+        std::vector<int> v(65536);
+        for(auto pix_it = gray_it->begin(); pix_it < gray_it->end(); ++pix_it)
+        {
+            v[img.at<uint16_t>(pix_it->x, pix_it->y)]++;
+        }
+
+
+        int max = 0;
+        int med = 0;
+        for(int i=0+5; i < v.size()-5; ++i)
+        {
+            int c = 0;
+            for(int j=i-5;j<i+5;j++)
+                c+=v[j];
+            if(max < c)
+            {
+                max = c;
+                med = i;
+            }
+        }
+        map.push_back(med);
+
+        // uint16_t i = 0;
+        // int count = 0;
+        // int median_pos = gray_it->size()/2;
+        // while(count < median_pos)
+        // {
+        //     count += v[i];
+        //     i++;
+        // }
+        // if(i!=0)
+        //     map.push_back(i-1);
+        // else
+        //     map.push_back(0);
     }
+}
+//----------------------------------------------------------------------------//
+//TODO not uint8_t compatible yet
+int Histogram::applyMap(std::vector<uint16_t> &map)
+{
+    hist_data mapped_hist(65536);
+    for(int i = 0; i < hist.size(); i++)
+    // for(auto it = hist.begin(); it < hist.end(); ++it)
+    {
+        mapped_hist[map[i]].insert(mapped_hist[map[i]].end(), hist[i].begin(), hist[i].end());
+    }
+
+    hist = mapped_hist;
 }
 //----------------------------------------------------------------------------//
 uint32_t ms_elapsed(steady_clock::time_point timestamp)
@@ -194,6 +240,20 @@ int Histogram::range()
         return r;
 }
 //----------------------------------------------------------------------------//
+void Histogram::stretchMax()
+{
+    float ratio = (float)size() / range();
+
+    hist_data stretched_hist(size());
+    for(int i=0 ; i<range() ; i++)
+    {
+        std::vector<cv::Point> &v = stretched_hist[int(i*ratio)];
+        v.insert(v.end(), hist[i+left()].begin(), hist[i+left()].end());
+    }
+
+    hist = stretched_hist;
+}
+//----------------------------------------------------------------------------//
 void Histogram::stretch(int left, int right)
 {
     right++;
@@ -204,7 +264,7 @@ void Histogram::stretch(int left, int right)
     float a = (float)(right-left) / size();
     float b = left;
 
-    for (int i=0;i<size();i++)
+    for(int i=0 ; i<size() ; i++)
     {
         std::vector<cv::Point> &v = stretched_hist[int(i*a + b)];
         v.insert(v.end(), hist[i].begin(), hist[i].end());
