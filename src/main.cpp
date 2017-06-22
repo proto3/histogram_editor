@@ -85,7 +85,7 @@ int main(int argc, char* argv[])
 
         cv::Point2f shift = phaseCorrelate(img_a_fp, img_b_fp);
         float dist = sqrt(shift.x*shift.x + shift.y*shift.y);
-        if(dist > 2.0)
+        if(dist > 1.0)
         {
             std::cout << shift << std::endl;
             string ref_name = pref_a + ".tif";
@@ -98,21 +98,28 @@ int main(int argc, char* argv[])
             img_ref = img_ref(cv::Rect(50, 50, img_ref.cols - 100, img_ref.rows - 100));
             img_ref = img_ref(cv::Rect(0, 0, border, border));
 
-            int balance = 0;
-            cv::namedWindow("Control", CV_WINDOW_AUTOSIZE);
-            cvCreateTrackbar("balance", "Control", &balance, 1);
             uint16_t max_ref = *max_element(img_ref.begin<uint16_t>(), img_ref.end<uint16_t>());
             uint16_t max_a = *max_element(img_a.begin<uint16_t>(), img_a.end<uint16_t>());
             uint16_t max_b = *max_element(img_b.begin<uint16_t>(), img_b.end<uint16_t>());
-            img_ref = img_ref * (65536.0 / max_ref) / 100;
-            img_a = img_a * (65536.0 / max_a) / 100;
-            img_b = img_b * (65536.0 / max_b) / 100;
-            while(cv::waitKey(30) != 27)
+
+            img_ref = img_ref * (65536.0 / max_ref);
+            img_a = img_a * (65536.0 / max_a);
+            img_b = img_b * (65536.0 / max_b);
+
+            bool toggle;
+            while(cv::waitKey(300) != 27)
             {
-                cv::Mat img_fused_a = img_ref * balance*100 + img_a * (100 - balance*100);
-                cv::Mat img_fused_b = img_ref * balance*100 + img_b * (100 - balance*100);
-                imshow("a", img_fused_a);
-                imshow("b", img_fused_b);
+                if(toggle)
+                {
+                    imshow("a", img_ref);
+                    imshow("b", img_ref);
+                }
+                else
+                {
+                    imshow("a", img_a);
+                    imshow("b", img_b);
+                }
+                toggle = !toggle;
             }
         }
 
